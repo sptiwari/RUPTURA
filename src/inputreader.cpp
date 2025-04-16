@@ -452,6 +452,13 @@ InputReader::InputReader(const std::string fileName) : components()
         components[numberOfComponents - 1].D = value;
         continue;
       }
+      if (caseInSensStringCompare(keyword, "ComponentKineticExponent"))
+      {
+        double value = parseDouble(arguments, keyword, lineNumber);
+        components[numberOfComponents - 1].Kn = value;
+        components[numberOfComponents - 1].useConcentrationDependentKinetics = true;
+        continue;
+      }
 
       if (caseInSensStringCompare(keyword, "NumberOfIsothermSites"))
       {

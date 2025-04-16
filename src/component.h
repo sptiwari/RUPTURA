@@ -33,19 +33,22 @@ struct Component
    * \param _Yi0 Initial gas phase mol-fraction [-].
    * \param _Kl Mass transfer coefficient [1/s].
    * \param _D Axial dispersion coefficient [m^2/s].
+   * \param _Kn Optional kinetic exponent 'n' for concentration-dependent rate (default is 0.0, implies constant Kl).
    * \param _isCarrierGas Optional flag indicating if this is the carrier gas (default is false).
    */
   Component(size_t _id, std::string _name, std::vector<Isotherm> _isotherms, double _Yi0, double _Kl, double _D,
-            bool _isCarrierGas = false);
+            double _Kn = 0.0, bool _isCarrierGas = false);
 
-  size_t id;                   ///< Identifier of the component.
-  std::string name{};          ///< Name of the component.
-  std::string filename{};      ///< Filename associated with the component data.
-  MultiSiteIsotherm isotherm;  ///< Isotherm information for the component.
-  double Yi0;                  ///< Gas phase mol-fraction [-].
-  double Kl;                   ///< Mass transfer coefficient [1/s].
-  double D;                    ///< Axial dispersion coefficient [m^2/s].
-  bool isCarrierGas{false};    ///< Flag indicating if this is the carrier gas.
+  size_t id;                                      ///< Identifier of the component.
+  std::string name{};                             ///< Name of the component.
+  std::string filename{};                         ///< Filename associated with the component data.
+  MultiSiteIsotherm isotherm;                     ///< Isotherm information for the component.
+  double Yi0;                                     ///< Gas phase mol-fraction [-].
+  double Kl;                                      ///< Mass transfer coefficient [1/s].
+  double D;                                       ///< Axial dispersion coefficient [m^2/s].
+  double Kn{0.0};                                 ///< Kinetic exponent 'n' for concentration-dependent rate.
+  bool useConcentrationDependentKinetics{false};  ///< Flag indicating if Kn was provided and should be used.
+  bool isCarrierGas{false};                       ///< Flag indicating if this is the carrier gas.
 
   /**
    * \brief Prints the component information to the console.

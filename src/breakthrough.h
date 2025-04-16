@@ -162,10 +162,10 @@ struct Breakthrough
   std::pair<size_t, size_t> iastPerformance{0, 0};  ///< Performance metrics for IAST calculations.
 
   // vector of size 'Ncomp'
-  std::vector<double> prefactor;  ///< Precomputed factors for mass transfer.
-  std::vector<double> Yi;         ///< Ideal gas mole fractions for each component.
-  std::vector<double> Xi;         ///< Adsorbed mole fractions for each component.
-  std::vector<double> Ni;         ///< Number of molecules for each component.
+  // std::vector<double> prefactor;  ///< Removed: Precomputed factors for mass transfer. Calculation moved.
+  std::vector<double> Yi;  ///< Ideal gas mole fractions for each component.
+  std::vector<double> Xi;  ///< Adsorbed mole fractions for each component.
+  std::vector<double> Ni;  ///< Number of molecules for each component.
 
   // vector of size '(Ngrid + 1)'
   std::vector<double> V;     ///< Interstitial gas velocity along the column.

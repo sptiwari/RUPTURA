@@ -76,7 +76,7 @@ Breakthrough::Breakthrough(const InputReader &inputReader)
       tpulse(inputReader.pulseTime),
       mixture(inputReader),
       maxIsothermTerms(inputReader.maxIsothermTerms),
-      prefactor(Ncomp),
+      // prefactor(Ncomp), // Removed
       Yi(Ncomp),
       Xi(Ncomp),
       Ni(Ncomp),
@@ -126,7 +126,7 @@ Breakthrough::Breakthrough(std::string _displayName, std::vector<Component> _com
       tpulse(_pulseTime),
       mixture(_mixture),
       maxIsothermTerms(mixture.getMaxIsothermTerms()),
-      prefactor(Ncomp),
+      // prefactor(Ncomp), // Removed
       Yi(Ncomp),
       Xi(Ncomp),
       Ni(Ncomp),
@@ -151,11 +151,7 @@ Breakthrough::Breakthrough(std::string _displayName, std::vector<Component> _com
 
 void Breakthrough::initialize()
 {
-  // precomputed factor for mass transfer
-  for (size_t j = 0; j < Ncomp; ++j)
-  {
-    prefactor[j] = R * T * ((1.0 - epsilon) / epsilon) * rho_p * components[j].Kl;
-  }
+  // Removed prefactor calculation loop
 
   // set P and Q to zero
   std::fill(P.begin(), P.end(), 0.0);
@@ -569,11 +565,57 @@ void Breakthrough::computeFirstDerivatives(std::vector<double> &dqdt, std::vecto
   double idx = 1.0 / dx;
   double idx2 = 1.0 / (dx * dx);
 
-  // first gridpoint
+  // Constant for mass transfer term in dpdt calculation
+  const double mass_transfer_factor = R * T * ((1.0 - epsilon) / epsilon) * rho_p;
+
+  // first gridpoint (boundary condition: dpdt = 0)
   for (size_t j = 0; j < Ncomp; ++j)
   {
-    dqdt[0 * Ncomp + j] = components[j].Kl * (q_eq[0 * Ncomp + j] - q[0 * Ncomp + j]);
-    dpdt[0 * Ncomp + j] = 0.0;
+    // Calculate dqdt based on the kinetic model
+    double k0 = components[j].Kl;
+    double q_equilibrium = q_eq[0 * Ncomp + j];
+    double current_q = q[0 * Ncomp + j];
+
+    if (components[j].useConcentrationDependentKinetics)
+    {
+      double n_exp = components[j].Kn;
+      // Ensure isotherm data is available and qm is positive
+      if (!components[j].isotherm.sites.empty() && components[j].isotherm.sites[0].parameters.size() > 0)
+      {
+        double qm =
+            components[j].isotherm.sites[0].parameters[0];  // Assuming qm is the first parameter of the first site
+        double k_effective = k0;
+        if (qm > 1e-12)  // Avoid division by zero or negative qm
+        {
+          double loading_ratio = current_q / qm;
+          if (loading_ratio < 1.0 && loading_ratio >= 0.0)  // Ensure base for pow is valid [0, 1)
+          {
+            k_effective *= std::pow(1.0 - loading_ratio, n_exp);
+          }
+          else  // Rate is zero at/above saturation or if ratio is invalid
+          {
+            k_effective = 0.0;
+          }
+        }
+        else  // qm is zero or negative, rate should be zero
+        {
+          k_effective = 0.0;
+        }
+        dqdt[0 * Ncomp + j] = k_effective * (q_equilibrium - current_q);
+      }
+      else
+      {
+        // Fallback or error if isotherm data is missing for concentration-dependent kinetics
+        dqdt[0 * Ncomp + j] = k0 * (q_equilibrium - current_q);  // Fallback to constant Kl
+      }
+    }
+    else
+    {
+      // Use the original constant Kl model
+      dqdt[0 * Ncomp + j] = k0 * (q_equilibrium - current_q);
+    }
+
+    dpdt[0 * Ncomp + j] = 0.0;  // Boundary condition
   }
 
   // middle gridpoints
@@ -581,21 +623,110 @@ void Breakthrough::computeFirstDerivatives(std::vector<double> &dqdt, std::vecto
   {
     for (size_t j = 0; j < Ncomp; ++j)
     {
-      dqdt[i * Ncomp + j] = components[j].Kl * (q_eq[i * Ncomp + j] - q[i * Ncomp + j]);
+      // Calculate dqdt based on the kinetic model
+      double k0 = components[j].Kl;
+      double q_equilibrium = q_eq[i * Ncomp + j];
+      double current_q = q[i * Ncomp + j];
+
+      if (components[j].useConcentrationDependentKinetics)
+      {
+        double n_exp = components[j].Kn;
+        // Ensure isotherm data is available and qm is positive
+        if (!components[j].isotherm.sites.empty() && components[j].isotherm.sites[0].parameters.size() > 0)
+        {
+          double qm =
+              components[j].isotherm.sites[0].parameters[0];  // Assuming qm is the first parameter of the first site
+          double k_effective = k0;
+          if (qm > 1e-12)  // Avoid division by zero or negative qm
+          {
+            double loading_ratio = current_q / qm;
+            if (loading_ratio < 1.0 && loading_ratio >= 0.0)  // Ensure base for pow is valid [0, 1)
+            {
+              k_effective *= std::pow(1.0 - loading_ratio, n_exp);
+            }
+            else  // Rate is zero at/above saturation or if ratio is invalid
+            {
+              k_effective = 0.0;
+            }
+          }
+          else  // qm is zero or negative, rate should be zero
+          {
+            k_effective = 0.0;
+          }
+          dqdt[i * Ncomp + j] = k_effective * (q_equilibrium - current_q);
+        }
+        else
+        {
+          // Fallback or error if isotherm data is missing for concentration-dependent kinetics
+          dqdt[i * Ncomp + j] = k0 * (q_equilibrium - current_q);  // Fallback to constant Kl
+        }
+      }
+      else
+      {
+        // Use the original constant Kl model
+        dqdt[i * Ncomp + j] = k0 * (q_equilibrium - current_q);
+      }
+
+      // Calculate dpdt using the calculated dqdt
       dpdt[i * Ncomp + j] =
           (v[i - 1] * p[(i - 1) * Ncomp + j] - v[i] * p[i * Ncomp + j]) * idx +
           components[j].D * (p[(i + 1) * Ncomp + j] - 2.0 * p[i * Ncomp + j] + p[(i - 1) * Ncomp + j]) * idx2 -
-          prefactor[j] * (q_eq[i * Ncomp + j] - q[i * Ncomp + j]);
+          mass_transfer_factor * dqdt[i * Ncomp + j];  // Use calculated dqdt here
     }
   }
 
-  // last gridpoint
+  // last gridpoint (boundary condition: dpdx = 0 => second derivative term simplified)
   for (size_t j = 0; j < Ncomp; ++j)
   {
-    dqdt[Ngrid * Ncomp + j] = components[j].Kl * (q_eq[Ngrid * Ncomp + j] - q[Ngrid * Ncomp + j]);
+    // Calculate dqdt based on the kinetic model
+    double k0 = components[j].Kl;
+    double q_equilibrium = q_eq[Ngrid * Ncomp + j];
+    double current_q = q[Ngrid * Ncomp + j];
+
+    if (components[j].useConcentrationDependentKinetics)
+    {
+      double n_exp = components[j].Kn;
+      // Ensure isotherm data is available and qm is positive
+      if (!components[j].isotherm.sites.empty() && components[j].isotherm.sites[0].parameters.size() > 0)
+      {
+        double qm =
+            components[j].isotherm.sites[0].parameters[0];  // Assuming qm is the first parameter of the first site
+        double k_effective = k0;
+        if (qm > 1e-12)  // Avoid division by zero or negative qm
+        {
+          double loading_ratio = current_q / qm;
+          if (loading_ratio < 1.0 && loading_ratio >= 0.0)  // Ensure base for pow is valid [0, 1)
+          {
+            k_effective *= std::pow(1.0 - loading_ratio, n_exp);
+          }
+          else  // Rate is zero at/above saturation or if ratio is invalid
+          {
+            k_effective = 0.0;
+          }
+        }
+        else  // qm is zero or negative, rate should be zero
+        {
+          k_effective = 0.0;
+        }
+        dqdt[Ngrid * Ncomp + j] = k_effective * (q_equilibrium - current_q);
+      }
+      else
+      {
+        // Fallback or error if isotherm data is missing for concentration-dependent kinetics
+        dqdt[Ngrid * Ncomp + j] = k0 * (q_equilibrium - current_q);  // Fallback to constant Kl
+      }
+    }
+    else
+    {
+      // Use the original constant Kl model
+      dqdt[Ngrid * Ncomp + j] = k0 * (q_equilibrium - current_q);
+    }
+
+    // Calculate dpdt using the calculated dqdt
     dpdt[Ngrid * Ncomp + j] = (v[Ngrid - 1] * p[(Ngrid - 1) * Ncomp + j] - v[Ngrid] * p[Ngrid * Ncomp + j]) * idx +
-                              components[j].D * (p[(Ngrid - 1) * Ncomp + j] - p[Ngrid * Ncomp + j]) * idx2 -
-                              prefactor[j] * (q_eq[Ngrid * Ncomp + j] - q[Ngrid * Ncomp + j]);
+                              components[j].D * (p[(Ngrid - 1) * Ncomp + j] - p[Ngrid * Ncomp + j]) *
+                                  idx2 -  // Simplified second derivative at boundary
+                              mass_transfer_factor * dqdt[Ngrid * Ncomp + j];  // Use calculated dqdt here
   }
 }
 
@@ -607,6 +738,9 @@ void Breakthrough::computeVelocity()
   // first grid point
   Vnew[0] = v_in;
 
+  // Constant for mass transfer term calculation
+  const double mass_transfer_factor = R * T * ((1.0 - epsilon) / epsilon) * rho_p;
+
   // middle gridpoints
   for (size_t i = 1; i < Ngrid; ++i)
   {
@@ -614,8 +748,9 @@ void Breakthrough::computeVelocity()
     double sum = 0.0;
     for (size_t j = 0; j < Ncomp; ++j)
     {
+      // Use the latest calculated dq/dt (stored in Dqdtnew) for the mass transfer term
       sum =
-          sum - prefactor[j] * (Qeqnew[i * Ncomp + j] - Qnew[i * Ncomp + j]) +
+          sum - mass_transfer_factor * Dqdtnew[i * Ncomp + j] +
           components[j].D * (Pnew[(i - 1) * Ncomp + j] - 2.0 * Pnew[i * Ncomp + j] + Pnew[(i + 1) * Ncomp + j]) * idx2;
     }
 
@@ -627,7 +762,8 @@ void Breakthrough::computeVelocity()
   double sum = 0.0;
   for (size_t j = 0; j < Ncomp; ++j)
   {
-    sum = sum - prefactor[j] * (Qeqnew[Ngrid * Ncomp + j] - Qnew[Ngrid * Ncomp + j]) +
+    // Use the latest calculated dq/dt (stored in Dqdtnew) for the mass transfer term
+    sum = sum - mass_transfer_factor * Dqdtnew[Ngrid * Ncomp + j] +
           components[j].D * (Pnew[(Ngrid - 1) * Ncomp + j] - Pnew[Ngrid * Ncomp + j]) * idx2;
   }
 

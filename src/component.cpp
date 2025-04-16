@@ -6,9 +6,11 @@
 #include "isotherm.h"
 
 Component::Component(size_t _id, std::string _name, std::vector<Isotherm> _isotherms, double _Yi0, double _Kl,
-                     double _D, bool _isCarrierGas)
-    : id(_id), name(_name), Yi0(_Yi0), Kl(_Kl), D(_D), isCarrierGas(_isCarrierGas)
+                     double _D, double _Kn, bool _isCarrierGas)
+    : id(_id), name(_name), Yi0(_Yi0), Kl(_Kl), D(_D), Kn(_Kn), isCarrierGas(_isCarrierGas)
 {
+  // Note: useConcentrationDependentKinetics is initialized to false by default in the header
+  // It will be set to true by the InputReader if the Kn parameter is provided.
   isotherm.numberOfSites = _isotherms.size();
   for (Isotherm it : _isotherms)
   {
